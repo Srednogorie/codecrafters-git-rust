@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 use std::io::prelude::*;
 use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
+use sha1::{Sha1, Digest};
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -30,6 +32,22 @@ fn main() {
             let content = &bytes[null_pos + 1..];
             print!("{}", String::from_utf8_lossy(content));
         }
+    } else if args[1] == "hash-object" && args[2] == "-w" {
+        let path = &args[3];
+        let contents = fs::read(path).unwrap();
+        let header = format!("blob {}", contents.len());
+        let data = [header.as_bytes(), &[0], &contents].concat();
+        let hash = Sha1::digest(&data);
+        let hex_hash = format!("{:x}", hash);
+        println!("{}", hex_hash);
+        let dir = format!(".git/objects/{}", &hex_hash[..2]);
+        fs::create_dir_all(&dir).unwrap();
+        let file = format!("{}/{}", dir, &hex_hash[2..]);
+        let mut f = fs::File::create(file).unwrap();
+        let mut compressed = ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        compressed.write_all(&data).unwrap();
+        let compressed_bytes = compressed.finish().unwrap();
+        f.write_all(&compressed_bytes).unwrap();
     } else {
         println!("unknown command: {}", args[1])
     }
