@@ -48,6 +48,80 @@ fn main() {
         compressed.write_all(&data).unwrap();
         let compressed_bytes = compressed.finish().unwrap();
         f.write_all(&compressed_bytes).unwrap();
+    } else if args[1] == "ls-tree" {
+        let object_id = if args.len() == 4 { &args[3] } else { &args[2] };
+        let path = format!(".git/objects/{}/{}", &object_id[..2], &object_id[2..]);
+        let mut d = ZlibDecoder::new(fs::File::open(path).unwrap());
+        let mut bytes = Vec::new();
+        d.read_to_end(&mut bytes).unwrap();
+        
+        let mut line = Vec::new();
+        let mut header_vec = Vec::new();
+        let mut header = false;
+        let mut current_bytes = Vec::new();
+        let mut reading_bytes = false;
+        let mut record = String::new();
+        let mut records = Vec::new();
+        for ch in bytes {
+            
+            if !header && ch != b'\0' {
+                header_vec.push(ch);
+                continue;
+            }
+            if !header && ch == b'\0' {
+                header = true;
+                continue;
+            }
+            // <mode> <filename>\0<20 bytes>
+            if ch == b' ' && !reading_bytes {
+                let mode = &line;
+                record.push_str(&format!("{:0>6} ", String::from_utf8_lossy(&mode)));
+                line.clear();
+                continue;
+            } else if ch == b'\0' && !reading_bytes {
+                let filename = &line;
+                record.push_str(&format!("{} ", String::from_utf8_lossy(&filename)));
+                line.clear();
+                reading_bytes = true;
+                continue;
+            } else {
+                if reading_bytes && current_bytes.len() != 20 {
+                    current_bytes.push(ch);
+                } else {
+                    if current_bytes.len() == 20 {
+                        let hash = Sha1::digest(&current_bytes);
+                        let hex_hash = format!("{:x}", hash);
+                        record.push_str(&hex_hash);
+                        current_bytes.clear();
+                        reading_bytes = false;
+                        
+                        records.push(record.clone());
+                        record.clear();
+                    }
+                    line.push(ch);
+                }
+            }
+        }
+        // Get the last record
+        let hash = Sha1::digest(&current_bytes);
+        let hex_hash = format!("{:x}", hash);
+        record.push_str(&hex_hash);
+        records.push(record.clone());
+        
+        records.sort();
+        if args.len() == 4 {
+            if args[2] == "--name-only" {
+                for record in records {
+                    let spitted: Vec<&str> = record.split_whitespace().collect();
+                    let filename = spitted[1];
+                    println!("{}", filename);
+                }
+            }
+        } else {
+            for record in records {
+                println!("{}", record);
+            }
+        }
     } else {
         println!("unknown command: {}", args[1])
     }
