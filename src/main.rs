@@ -108,7 +108,7 @@ fn main() {
         record.push_str(&hex_hash);
         records.push(record.clone());
         
-        records.sort();
+        // records.sort();
         if args.len() == 4 {
             if args[2] == "--name-only" {
                 for record in records {
