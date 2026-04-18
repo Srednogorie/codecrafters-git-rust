@@ -3,7 +3,80 @@ use std::fs;
 use std::io::prelude::*;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
+
+
+fn get_file_sha(path: &std::path::Path) -> Vec<u8> {
+    let contents = fs::read(path).unwrap();
+    let header = format!("blob {}", contents.len());
+    let data = [header.as_bytes(), &[0], &contents].concat();
+    Sha1::digest(&data).to_vec()
+}
+
+fn write_tree(path: &std::path::Path) -> Vec<u8> {
+    let mut entries: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+
+    for entry in fs::read_dir(path).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let name = entry.file_name().into_string().unwrap();
+
+        if path.is_file() {
+            let hash = get_file_sha(&path); // you already have this
+            let header = format!("100644 {name}\0").into_bytes();
+            entries.push((header, hash));
+        } else if path.is_dir() {
+            if name == ".git" {
+                continue;
+            }
+            let hash = write_tree(&path); // recursion
+            let header = format!("40000 {name}\0").into_bytes();
+            entries.push((header, hash));
+        }
+    }
+    
+    // TODO: this cannot be! We need to refactor all this and find better and cleaner way to sort.
+    // Git requires entries sorted by name, with directories compared as "name/"
+    entries.sort_by(|a, b| {
+        // Extract name from header: "<mode> <name>\0" → name is between space and null
+        let name_of = |header: &Vec<u8>| -> Vec<u8> {
+            let space_pos = header.iter().position(|&c| c == b' ').unwrap();
+            let null_pos = header.iter().position(|&c| c == 0).unwrap();
+            let is_dir = &header[..space_pos] == b"40000";
+            let mut name = header[space_pos + 1..null_pos].to_vec();
+            if is_dir {
+                name.push(b'/');
+            }
+            name
+        };
+        name_of(&a.0).cmp(&name_of(&b.0))
+    });
+
+    // Build tree content
+    let mut content = Vec::new();
+    for (header, hash) in entries {
+        content.extend_from_slice(&header);
+        content.extend_from_slice(&hash);
+    }
+
+    // Hash the tree object
+    let header = format!("tree {}\0", content.len());
+    let mut data = header.into_bytes();
+    data.extend_from_slice(&content);
+
+    let hash = Sha1::digest(&data);
+    let hex_hash = format!("{:x}", hash);
+    let dir = format!(".git/objects/{}", &hex_hash[..2]);
+    fs::create_dir_all(&dir).unwrap();
+    let file_path = format!("{}/{}", dir, &hex_hash[2..]);
+    let mut f = fs::File::create(file_path).unwrap();
+    let mut compressed = ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    compressed.write_all(&data).unwrap();
+    let compressed_bytes = compressed.finish().unwrap();
+    f.write_all(&compressed_bytes).unwrap();
+
+    hash.to_vec()
+}
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -122,6 +195,11 @@ fn main() {
                 println!("{}", record);
             }
         }
+    } else if args[1] == "write-tree" {
+        let root = std::path::Path::new(".");
+        let hash_bytes = write_tree(root);
+        let hex_hash: String = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+        println!("{}", hex_hash);
     } else {
         println!("unknown command: {}", args[1])
     }
