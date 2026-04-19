@@ -200,6 +200,60 @@ fn main() {
         let hash_bytes = write_tree(root);
         let hex_hash: String = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
         println!("{}", hex_hash);
+    } else if args[1] == "commit-tree" {
+        // cargo run -- commit-tree 72bfbdef47b78ffe53ed08262696acf5c53eabc9 -p 554eef8599c84133a41e56f8317ad8807a9ec293 -m "Second commit"
+        
+        /*
+        commit 177\0tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+        parent 3b18e512dba79e4c8300dd08aeb37f8e728b8dad
+        author John Doe <john@example.com> 1234567890 +0000
+        committer John Doe <john@example.com> 1234567890 +0000
+        
+        Initial commit
+        */
+        
+        let tree_sha = args[2].clone();
+        let parent_sha = args[4].clone();
+        let message = args[6].clone();
+        
+        let tree_sha_path = format!(".git/objects/{}/{}", &tree_sha[..2], &tree_sha[2..]);
+        let mut tree_sha_d = ZlibDecoder::new(fs::File::open(tree_sha_path).unwrap());
+        let mut tree_sha_bytes = Vec::new();
+        tree_sha_d.read_to_end(&mut tree_sha_bytes).unwrap();
+        let tree_sha_line_size = ["tree ".as_bytes(), &tree_sha_bytes, "\n".as_bytes()].concat();
+        
+        let parent_sha_path = format!(".git/objects/{}/{}", &parent_sha[..2], &parent_sha[2..]);
+        let mut parent_sha_d = ZlibDecoder::new(fs::File::open(parent_sha_path).unwrap());
+        let mut parent_sha_bytes = Vec::new();
+        parent_sha_d.read_to_end(&mut parent_sha_bytes).unwrap();
+        let parent_sha_line_size = ["parent ".as_bytes(), &parent_sha_bytes, "\n".as_bytes()].concat();
+        
+        let author_line_size = ["author John Doe <john@example.com> 1234567890 +0000\n".as_bytes()].concat();
+        let committer_line_size = ["committer John Doe <john@example.com> 1234567890 +0000\n\n".as_bytes()].concat();
+        let message_line_size = message.as_bytes();
+        
+        let total_line_size = 
+            tree_sha_line_size.len() +
+            parent_sha_line_size.len() +
+            author_line_size.len() +
+            committer_line_size.len() +
+            message_line_size.len();
+        
+        let commit = format!("commit {}\0tree {}\nparent {}\nauthor John Doe <john@example.com> 1234567890 +0000\ncommitter John Doe <john@example.com> 1234567890 +0000\n\n{}\n", total_line_size, tree_sha, parent_sha, message);
+        
+        let data = commit.as_bytes();
+        
+        let hash = Sha1::digest(&data);
+        let hex_hash = format!("{:x}", hash);
+        println!("{}", hex_hash);
+        let dir = format!(".git/objects/{}", &hex_hash[..2]);
+        fs::create_dir_all(&dir).unwrap();
+        let file = format!("{}/{}", dir, &hex_hash[2..]);
+        let mut f = fs::File::create(file).unwrap();
+        let mut compressed = ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        compressed.write_all(&data).unwrap();
+        let compressed_bytes = compressed.finish().unwrap();
+        f.write_all(&compressed_bytes).unwrap();
     } else {
         println!("unknown command: {}", args[1])
     }
