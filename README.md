@@ -58,3 +58,55 @@ alias mygit=/path/to/your/repo/your_program.sh
 mkdir -p /tmp/testing && cd /tmp/testing
 mygit init
 ```
+
+## Commands
+### Init
+mkdir some_dir && cd some_dir \
+cargo run -- init
+
+### cat-file
+mkdir some_dir && cd some_dir \
+/path/to/your_program.sh init \
+echo "hello world" > test.txt # The tester will use a random string, not "hello world" \
+git hash-object -w test.txt \
+3b18e512dba79e4c8300dd08aeb37f8e728b8dad \
+/path/to/your_program.sh cat-file -p 3b18e512dba79e4c8300dd08aeb37f8e728b8dad \
+hello world \
+
+### hash-object
+mkdir test_dir && cd test_dir \
+/path/to/your_program.sh init \
+echo "hello world" > test.txt \
+./your_program.sh hash-object -w test.txt \
+3b18e512dba79e4c8300dd08aeb37f8e728b8dad \
+
+### ls-tree
+mkdir test_dir && cd test_dir \
+/path/to/your_program.sh init \
+It'll then write a tree object to the .git/objects directory. \
+/path/to/your_program.sh ls-tree --name-only <tree_sha> \
+
+### write-tree
+echo "hello world" > test.txt \
+git add test.txt \
+git write-tree \
+4b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+
+### commit-tree
+mkdir test_dir && cd test_dir \
+git init \
+echo "hello world" > test.txt \
+git add test.txt \
+git write-tree \
+4b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+git commit-tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904 -m "Initial commit" \
+3b18e512dba79e4c8300dd08aeb37f8e728b8dad \
+echo "hello world 2" > test.txt \
+git add test.txt \
+git write-tree \
+5b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+git commit-tree 5b825dc642cb6eb9a060e54bf8d69288fbee4904 -p 3b18e512dba79e4c8300dd08aeb37f8e728b8dad -m "Second commit" \
+6c18e512dba79e4c8300dd08aeb37f8e728b8dad \
+
+### clone
+/path/to/your_program.sh clone https://github.com/blah/blah <some_dir> \
